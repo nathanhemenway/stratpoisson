@@ -114,7 +114,7 @@ strat_poisson <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 10
 }
 
 #Test out the function
-strat_poisson(df, 'SleepHrsNight', 'BMI_WHO', 'AgeDecade', lambda = 0.1, tol = 1e-3, max_iter = 10)
+strat_poisson(df, 'SleepHrsNight', 'BMI_WHO', 'AgeDecade', lambda = 0.1, tol = 1e-6, max_iter = 10)
 
 library(NHANES)
 data('NHANES')
