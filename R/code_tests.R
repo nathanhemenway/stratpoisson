@@ -176,3 +176,35 @@ beta <- solve(t(X) %*% X) %*% t(X) %*% log_Y
 dim(X)
 
 print(c(dim(X), dim(log_Y)))
+
+
+##Try running on hospitalization data
+hospital <- read_csv('covid19_hospitalizations.csv')
+
+hospital %>%
+  select('Hospitalization time in days', 'Age group', 'Total number of comorbidities') %>%
+  rename('hospital_days' = 'Hospitalization time in days',
+         'age_group' = 'Age group',
+         'num_comorb' = 'Total number of comorbidities') %>%
+  drop_na() -> hospital
+
+hospital_res <- strat_poisson(hospital, 'hospital_days', 'age_group', 'num_comorb', lambda=0.1, tol = 1e-6, max_iter = 100)
+
+#make table to look at results
+age_effects <- hospital_res[1:7]
+comorb_effects <- hospital_res[8:14]
+
+table_results <- data.frame(age_group = 1:7,
+                             age_effect = age_effects)
+library(kableExtra)
+table_results %>%
+  kable(digits = 2) %>%
+  kable_styling(full_width = F)
+
+#look at comorb results
+table_results <- data.frame(num_comorb = 0:7,
+                             comorb_effect = c(0,comorb_effects))
+
+table_results %>%
+  kable(digits = 2) %>%
+  kable_styling(full_width = F)
