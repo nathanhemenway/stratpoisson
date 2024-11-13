@@ -208,3 +208,20 @@ table_results <- data.frame(num_comorb = 0:7,
 table_results %>%
   kable(digits = 2) %>%
   kable_styling(full_width = F)
+
+
+#Look at interaction matrix function from GLIDARS
+p <- 3
+q <- 3
+nb <- 2*p*q - p - q
+Apo0 <- matrix(0, nb, p*q)
+if(q > 1)
+  for(i in 1:(p*(q - 1))) {
+    Apo0[i, i] <- -1
+    Apo0[i, i + p] <- 1
+  }
+if(p > 1)
+  for(i in 1:(q*(p - 1))) {
+    j <- (i - 1)%/%(p-1) + i
+    Apo0[i + p*(q - 1), j:(j + 1)] <- c(-1, 1)
+  }
