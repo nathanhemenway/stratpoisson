@@ -153,7 +153,8 @@ strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 1
   df$interaction <- interaction(df[[var1]], df[[var2]])
 
   # Initialize the design matrix
-  X <- model.matrix(~interaction, data = df)
+  #X <- model.matrix(~interaction, data = df)
+  X <- model.matrix(~interaction - 1, data = df) #cell means coding
 
   # Create the constraint matrix
   Amat <- get_Ax(p = nlevels1, q = nlevels2)
@@ -220,3 +221,26 @@ matrix(resX, nrow = 7, ncol=4)
 
 library(pheatmap)
 pheatmap(matrix(resX, nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F)
+
+df <- data
+y <- 'hospital_days'
+var1 <- 'age_group'
+var2 <- 'pulm_impair'
+
+# Convert specified columns to factors
+df[[var1]] <- as.factor(df[[var1]])
+df[[var2]] <- as.factor(df[[var2]])
+
+# Find the number of levels in var1 and var2
+nlevels1 <- length(levels(df[[var1]]))
+nlevels2 <- length(levels(df[[var2]]))
+
+print(paste0('p = ', nlevels1, ', q = ', nlevels2))
+
+#Create interaction terms
+df$interaction <- interaction(df[[var1]], df[[var2]])
+
+# Initialize the design matrix with no intercept - cell means coding
+X <- model.matrix(~interaction - 1, data = df)
+X <- model.matrix(~interaction, data = df)
+
