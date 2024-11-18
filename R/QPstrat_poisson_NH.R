@@ -164,7 +164,7 @@ strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 1
 
   # Initial coefficient estimates
   #beta <- solve(t(X) %*% X) %*% t(X) %*% log_Y
-  beta <- c(0, rep(1, ncol(X)-1))
+  beta <- rep(1, ncol(X))
   epsilon <- 99
   iter <- 0
 
