@@ -225,3 +225,56 @@ if(p > 1)
     j <- (i - 1)%/%(p-1) + i
     Apo0[i + p*(q - 1), j:(j + 1)] <- c(-1, 1)
   }
+
+
+#Try to make correct penalty vector
+nrow <- 7
+ncol <- 4
+
+# Initialize a matrix with zeros
+mat <- matrix(0, nrow = nrow, ncol = ncol)
+
+# Assign values to the boundaries
+# Top boundary (first row, excluding the upper right corner)
+mat[1, ] <- -1
+
+# Left boundary (first column, excluding the top left corner)
+mat[-1, 1] <- -1
+
+# Bottom boundary (last row, excluding the bottom left corner)
+mat[nrow, ] <- 1
+
+# Right boundary (last column, excluding the upper right corner)
+mat[, ncol] <- 1
+
+#Fix corners
+mat[nrow, 1] <- 0
+mat[1, ncol] <- 0
+
+# Convert the matrix to a vector
+boundary_vector <- as.vector(mat)
+
+
+#example run through function
+df <- data
+y <- 'hospital_days'
+var1 <- 'age_group'
+var2 <- 'pulm_impair'
+
+# Convert specified columns to factors
+df[[var1]] <- as.factor(df[[var1]])
+df[[var2]] <- as.factor(df[[var2]])
+
+# Find the number of levels in var1 and var2
+nlevels1 <- length(levels(df[[var1]]))
+nlevels2 <- length(levels(df[[var2]]))
+
+print(paste0('p = ', nlevels1, ', q = ', nlevels2))
+
+#Create interaction terms
+df$interaction <- interaction(df[[var1]], df[[var2]])
+
+# Initialize the design matrix with no intercept - cell means coding
+X <- model.matrix(~interaction - 1, data = df)
+X <- model.matrix(~interaction, data = df)
+

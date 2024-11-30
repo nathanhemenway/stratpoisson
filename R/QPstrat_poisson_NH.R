@@ -119,7 +119,7 @@ strat_poisson <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 10
 #     Apo0[i + p*(q - 1), j:(j + 1)] <- c(-1, 1)
 #   }
 
-
+#Constraint matrix function
 get_Ax <- function(p, q) {
   nb <- 2*p*q - p - q #number of boundaries
   Ax <- matrix(0, nb, p*q)
@@ -137,8 +137,37 @@ get_Ax <- function(p, q) {
   return(Ax)
 }
 
+#Penalty vector function
+penalty_vec <- function(p, q){
+  # Initialize a matrix with zeros
+  mat <- matrix(0, nrow = p, ncol = q)
 
-strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 100) {
+  # Assign values to the boundaries
+  # Top boundary (first row, excluding the upper right corner)
+  mat[1, ] <- -1
+
+  # Left boundary (first column, excluding the top left corner)
+  mat[-1, 1] <- -1
+
+  # Bottom boundary (last row, excluding the bottom left corner)
+  mat[p, ] <- 1
+
+  # Right boundary (last column, excluding the upper right corner)
+  mat[, q] <- 1
+
+  #Fix corners
+  mat[p, 1] <- 0
+  mat[1, q] <- 0
+  mat[p, q] <- 2
+
+  # Convert the matrix to a vector
+  boundary_vector <- as.vector(mat)
+  return(boundary_vector)
+}
+
+
+#Main function
+strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 100, warm.start) {
   # Convert specified columns to factors
   df[[var1]] <- as.factor(df[[var1]])
   df[[var2]] <- as.factor(df[[var2]])
@@ -147,7 +176,7 @@ strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 1
   nlevels1 <- length(levels(df[[var1]]))
   nlevels2 <- length(levels(df[[var2]]))
 
-  print(paste0('p = ', nlevels1, ', q = ', nlevels2))
+  #print(paste0('p = ', nlevels1, ', q = ', nlevels2))
 
   #Create interaction terms
   df$interaction <- interaction(df[[var1]], df[[var2]])
@@ -162,9 +191,18 @@ strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 1
 
   y <- df[[y]]
 
+  #Find penalty vector
+  penalty <- penalty_vec(p = nlevels1, q = nlevels2)
+
   # Initial coefficient estimates
   #beta <- solve(t(X) %*% X) %*% t(X) %*% log_Y
-  beta <- rep(1, ncol(X))
+
+  if (missing(warm.start)) {
+    beta <- rep(1, ncol(X))
+  } else {
+    beta <- warm.start
+  }
+
   epsilon <- 99
   iter <- 0
 
@@ -179,7 +217,12 @@ strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 1
 
     # Compute D and d for the quadratic program
     D <- 2 * t(X) %*% A %*% X  # Quadratic term
-    d <- 2 * t(X) %*% A %*% z - lambda * (beta[tail(beta_indices[[1]], 1)] + beta[tail(beta_indices[[2]], 1)])  # Linear term with penalty
+    #d <- 2 * t(X) %*% A %*% z + lambda * (beta[tail(beta_indices[[1]], 1)] + beta[tail(beta_indices[[2]], 1)])  # Linear term with penalty
+    # d <- 2 * (t(X) %*% A %*% z - lambda * c(-1,-1, -1, -1, -1, -1, 0,
+    #                                        -1, 0, 0, 0, 0, 0, 1,
+    #                                        -1, 0, 0, 0, 0, 0, 1,
+    #                                        0, 1, 1, 1, 1, 1, 2))
+    d <- 2 * (t(X) %*% A %*% z - (lambda * penalty))
 
     # Solve the quadratic program with constraints
     solution <- solve.QP(Dmat = D, dvec = d, Amat = t(Amat), bvec = bvec, meq = 0)
@@ -192,7 +235,7 @@ strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 1
 
     #iterate
     iter <- iter + 1
-    print(iter)
+    #print(iter)
   }
 
   return(beta)
@@ -215,13 +258,125 @@ hospital %>%
   select(hospital_days, age_group, pulm_impair, age_pulm) %>%
   drop_na() -> data
 
-resX <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 0.1, tol = 1e-8, max_iter = 100)
+levels(data$age_group) <- c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+')
+levels(data$pulm_impair) <- c('None', 'Mild', 'Moderate', 'Severe')
+
+resX <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 10, tol = 1e-8, max_iter = 100)
 
 matrix(resX, nrow = 7, ncol=4)
 
 library(pheatmap)
-pheatmap(matrix(resX, nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F)
+pheatmap(matrix(exp(resX), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
+         show_rownames = T, show_colnames = T, fontsize = 8,
+         labels_row = c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+'),
+         labels_col = c('None', 'Mild', 'Moderate', 'Severe'),
+         angle_col=45,
+         main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status')
 
+
+
+#Try CART
+library(rpart)
+library(rpart.plot)
+
+# Fit a regression tree
+fit <- rpart(hospital_days ~ age_group + pulm_impair, data = data, method = "poisson")
+summary(fit)
+rpart.plot(fit)
+
+#get predicted values for every combination of age group and pulmonary impairment
+# Create a grid of all combinations of age group and pulmonary impairment
+age_group_levels <- levels(data$age_group)
+pulm_impair_levels <- levels(data$pulm_impair)
+grid <- matrix(NA, nrow = length(age_group_levels), ncol = length(pulm_impair_levels))
+
+for(age in age_group_levels) {
+  for(pulm in pulm_impair_levels) {
+    grid[age_group_levels == age, pulm_impair_levels == pulm] <- predict(fit, newdata = data.frame(age_group = age, pulm_impair = pulm))
+  }
+}
+
+#Create heatmap
+pheatmap(grid, cluster_rows = F, cluster_cols = F, display_numbers = T,
+         show_rownames = T, show_colnames = T, fontsize = 8,
+         labels_row = age_group_levels,
+         labels_col = pulm_impair_levels,
+         angle_col=45,
+         main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status')
+
+
+#Create function to find BIC for a given model
+bic_poisson <- function(df, y, var1, var2, beta) {
+  df[[var1]] <- as.factor(df[[var1]])
+  df[[var2]] <- as.factor(df[[var2]])
+  y <- df[[y]]
+
+  #Create interaction terms
+  df$interaction <- interaction(df[[var1]], df[[var2]])
+
+  # Initialize the design matrix
+  #X <- model.matrix(~interaction, data = df)
+  X <- model.matrix(~interaction - 1, data = df) #cell means coding
+  n <- nrow(df)
+  eta <- X %*% beta
+  mu <- exp(eta)
+  loglik <- sum(y * eta - mu - lfactorial(y))
+  bic <- -2 * loglik + log(n) * length(unique(round(beta,5)))
+  return(bic)
+}
+
+
+#Find optimal lambda over grid using BIC
+bic_lambda <- function(df, y, var1, var2, lambda_grid){
+  bic_values <- c()
+  n_unique_beta <- c()
+
+  for(i in 1:length(lambda_grid)){
+    if(i == 1){
+      beta <- strat_poissonX(df, y, var1, var2, lambda = lambda_grid[i], tol = 1e-8, max_iter = 100)
+    }else{
+      beta <- strat_poissonX(df, y, var1, var2, lambda = lambda_grid[i], tol = 1e-8, max_iter = 100, warm.start = beta)
+    }
+
+    #beta <- round(beta, 5)
+    bic_values <- c(bic_values, bic_poisson(df, y, var1, var2, beta))
+    n_unique_beta <- c(n_unique_beta, length(unique(beta)))
+  }
+  result <- list(lambda.min = lambda_grid[which.min(bic_values)], bic_values = bic_values)
+
+  return(result)
+}
+
+rez <- bic_lambda(df=data, y = 'hospital_days', var1 = 'age_group', var2 = 'pulm_impair', lambda_grid=seq(from=0, to=10, by=0.01))
+plot(x = seq(from=0, to=10, by=0.01), y = rez$bic_values, type='l')
+lambda1 <- rez$lambda.min
+lambda1
+
+result_optim <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = lambda1, tol = 1e-8, max_iter = 100)
+pheatmap(matrix(exp(result_optim), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
+         show_rownames = T, show_colnames = T, fontsize = 8,
+         labels_row = c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+'),
+         labels_col = c('None', 'Mild', 'Moderate', 'Severe'),
+         angle_col=45,
+         main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status',
+         number_format = "%.6f")
+other_result <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 4.5, tol = 1e-8, max_iter = 100)
+pheatmap(matrix(exp(other_result), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
+         show_rownames = T, show_colnames = T, fontsize = 8,
+         labels_row = c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+'),
+         labels_col = c('None', 'Mild', 'Moderate', 'Severe'),
+         angle_col=45,
+         main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status',
+         number_format = "%.6f")
+
+#Compare MSE between strat_poissonX vs CART
+true <- data$hospital_days
+#CART
+pred_CART <- predict(fit)
+cart_mse <- mean((pred_CART - true)^2)
+cart_mse
+
+#stratPoissonX
 df <- data
 y <- 'hospital_days'
 var1 <- 'age_group'
@@ -231,16 +386,56 @@ var2 <- 'pulm_impair'
 df[[var1]] <- as.factor(df[[var1]])
 df[[var2]] <- as.factor(df[[var2]])
 
-# Find the number of levels in var1 and var2
-nlevels1 <- length(levels(df[[var1]]))
-nlevels2 <- length(levels(df[[var2]]))
+#Create interaction terms
+df$interaction <- interaction(df[[var1]], df[[var2]])
 
-print(paste0('p = ', nlevels1, ', q = ', nlevels2))
+# Initialize the design matrix with no intercept - cell means coding
+X <- model.matrix(~interaction - 1, data = df)
+
+#predictions
+strat_pois_pred <- as.vector(exp(X %*% result_optim))
+
+#mse
+strat_pois_mse <- mean((strat_pois_pred - true)^2)
+strat_pois_mse
+
+#Create train/test data
+set.seed(5318008)
+samp_size <- round(0.667 * nrow(data))
+train_idx <- sample(1:nrow(data), size = samp_size, replace = F)
+train <- data[train_idx, ]
+test <- data[-train_idx, ]
+
+#Train models
+
+#CART
+cart_fit <- rpart(hospital_days ~ age_group + pulm_impair, data = train, method = "poisson")
+
+#stratPoissonX
+pois_fit <- strat_poissonX(train, 'hospital_days', 'age_group', 'pulm_impair', lambda = lambda1, tol = 1e-8, max_iter = 100)
+
+#find predicted vals
+cart_pred <- predict(cart_fit, newdata = test)
+#stratPoissonX
+df <- test
+y <- 'hospital_days'
+var1 <- 'age_group'
+var2 <- 'pulm_impair'
+
+# Convert specified columns to factors
+df[[var1]] <- as.factor(df[[var1]])
+df[[var2]] <- as.factor(df[[var2]])
 
 #Create interaction terms
 df$interaction <- interaction(df[[var1]], df[[var2]])
 
 # Initialize the design matrix with no intercept - cell means coding
 X <- model.matrix(~interaction - 1, data = df)
-X <- model.matrix(~interaction, data = df)
 
+#predictions
+pois_pred <- as.vector(exp(X %*% pois_fit))
+
+#MSE
+true <- test$hospital_days
+mean((cart_pred - true)^2)
+mean((pois_pred - true)^2)
