@@ -243,7 +243,7 @@ strat_poissonX <- function(df, y, var1, var2, lambda=0, tol = 1e-6, max_iter = 1
 
 
 ##Test out the functions
-
+library(tidyverse)
 hospital <- read_csv('covid19_hospitalizations.csv')
 hospital %>%
   rename('hospital_days' = 'Hospitalization time in days',
@@ -261,7 +261,7 @@ hospital %>%
 levels(data$age_group) <- c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+')
 levels(data$pulm_impair) <- c('None', 'Mild', 'Moderate', 'Severe')
 
-resX <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 10, tol = 1e-8, max_iter = 100)
+resX <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 50, tol = 1e-8, max_iter = 100)
 
 matrix(resX, nrow = 7, ncol=4)
 
@@ -280,7 +280,11 @@ library(rpart)
 library(rpart.plot)
 
 # Fit a regression tree
-fit <- rpart(hospital_days ~ age_group + pulm_impair, data = data, method = "poisson")
+cart_dat <- data
+cart_dat$age_group <- as.ordered(cart_dat$age_group)
+cart_dat$pulm_impair <- as.ordered(cart_dat$pulm_impair)
+colnames(cart_dat) <- c('hospital_days', 'Age.Group', 'Pulmonary.Impairment', 'age_pulm')
+fit <- rpart(hospital_days ~ Age.Group + Pulmonary.Impairment, data = cart_dat, method = "poisson")
 summary(fit)
 rpart.plot(fit)
 
@@ -321,15 +325,26 @@ bic_poisson <- function(df, y, var1, var2, beta) {
   eta <- X %*% beta
   mu <- exp(eta)
   loglik <- sum(y * eta - mu - lfactorial(y))
-  bic <- -2 * loglik + log(n) * length(unique(round(beta,5)))
+  bic <- -2 * loglik + log(n) * length(unique(round(beta,8)))
   return(bic)
 }
 
 
 #Find optimal lambda over grid using BIC
-bic_lambda <- function(df, y, var1, var2, lambda_grid){
+bic_mse_lambda <- function(df, y, var1, var2, lambda_grid){
   bic_values <- c()
   n_unique_beta <- c()
+  MSE <- c()
+
+  df[[var1]] <- as.factor(df[[var1]])
+  df[[var2]] <- as.factor(df[[var2]])
+  y1 <- df[[y]]
+
+  #Create interaction terms
+  df$interaction <- interaction(df[[var1]], df[[var2]])
+
+  # Initialize the design matrix with no intercept - cell means coding
+  X <- model.matrix(~interaction - 1, data = df)
 
   for(i in 1:length(lambda_grid)){
     if(i == 1){
@@ -341,16 +356,19 @@ bic_lambda <- function(df, y, var1, var2, lambda_grid){
     #beta <- round(beta, 5)
     bic_values <- c(bic_values, bic_poisson(df, y, var1, var2, beta))
     n_unique_beta <- c(n_unique_beta, length(unique(beta)))
+    MSE <- c(MSE, mean((exp(X %*% beta) - y1)^2))
   }
-  result <- list(lambda.min = lambda_grid[which.min(bic_values)], bic_values = bic_values)
+  result <- list(lambda.min = lambda_grid[which.min(bic_values)], bic_values = bic_values, MSE = MSE)
 
   return(result)
 }
 
-rez <- bic_lambda(df=data, y = 'hospital_days', var1 = 'age_group', var2 = 'pulm_impair', lambda_grid=seq(from=0, to=10, by=0.01))
+rez <- bic_mse_lambda(df=data, y = 'hospital_days', var1 = 'age_group', var2 = 'pulm_impair', lambda_grid=seq(from=0, to=10, by=0.01))
 plot(x = seq(from=0, to=10, by=0.01), y = rez$bic_values, type='l')
 lambda1 <- rez$lambda.min
 lambda1
+
+plot(x = seq(from=0, to=10, by=0.01), y = rez$MSE, type='l')
 
 result_optim <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = lambda1, tol = 1e-8, max_iter = 100)
 pheatmap(matrix(exp(result_optim), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
@@ -359,7 +377,7 @@ pheatmap(matrix(exp(result_optim), nrow = 7, ncol=4), cluster_rows = F, cluster_
          labels_col = c('None', 'Mild', 'Moderate', 'Severe'),
          angle_col=45,
          main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status',
-         number_format = "%.6f")
+         number_format = "%.2f")
 other_result <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 4.5, tol = 1e-8, max_iter = 100)
 pheatmap(matrix(exp(other_result), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
          show_rownames = T, show_colnames = T, fontsize = 8,
@@ -400,7 +418,7 @@ strat_pois_mse <- mean((strat_pois_pred - true)^2)
 strat_pois_mse
 
 #Create train/test data
-set.seed(5318008)
+set.seed(2024)
 samp_size <- round(0.667 * nrow(data))
 train_idx <- sample(1:nrow(data), size = samp_size, replace = F)
 train <- data[train_idx, ]
@@ -439,3 +457,102 @@ pois_pred <- as.vector(exp(X %*% pois_fit))
 true <- test$hospital_days
 mean((cart_pred - true)^2)
 mean((pois_pred - true)^2)
+
+#evaluate run time
+system.time(strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = lambda1, tol = 1e-8, max_iter = 100))
+system.time(rpart(hospital_days ~ Age.Group + Pulmonary.Impairment, data = cart_dat, method = "poisson"))
+
+#Effect of varying lambda
+resl1 <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 20, tol = 1e-8, max_iter = 100)
+
+pheatmap(matrix(exp(resl1), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
+         show_rownames = T, show_colnames = T, fontsize = 8,
+         labels_row = c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+'),
+         labels_col = c('None', 'Mild', 'Moderate', 'Severe'),
+         angle_col=45,
+         main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status: Lambda = 20')
+
+resl2 <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 50, tol = 1e-8, max_iter = 100)
+
+pheatmap(matrix(exp(resl2), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
+         show_rownames = T, show_colnames = T, fontsize = 8,
+         labels_row = c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+'),
+         labels_col = c('None', 'Mild', 'Moderate', 'Severe'),
+         angle_col=45,
+         main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status: Lambda = 50')
+
+resl3 <- strat_poissonX(data, 'hospital_days', 'age_group', 'pulm_impair', lambda = 100, tol = 1e-8, max_iter = 100)
+
+pheatmap(matrix(exp(resl3), nrow = 7, ncol=4), cluster_rows = F, cluster_cols = F, display_numbers = T,
+         show_rownames = T, show_colnames = T, fontsize = 8,
+         labels_row = c('<= 29', '30-39', '40-49', '50-59', '60-69', '70-79', '80+'),
+         labels_col = c('None', 'Mild', 'Moderate', 'Severe'),
+         angle_col=45,
+         main = 'Estimated Average Hospitalization Days by Age Group and Pulmonary Impairment Status: Lambda = 100')
+
+
+#ADMM attempt
+library(quadprog)
+
+# ADMM Algorithm
+admm_poisson <- function(X, y, A, b, lambda, rho = 1, tol = 1e-6, max_iter = 200) {
+  # Initialize variables
+  p <- ncol(X)
+  beta <- rep(1, p)
+  z <- rep(1, p)
+  u <- rep(0, p)
+
+  for (k in 1:max_iter) {
+    # Step 1: Update beta
+    eta <- X %*% beta
+    mu <- exp(eta)
+    W <- diag(as.vector(mu))  # Diagonal weight matrix
+    Hessian <- t(X) %*% W %*% X + (lambda + rho) * diag(p)
+    gradient <- -t(X) %*% (y - mu) + rho * (z - u)
+    beta <- solve(Hessian, gradient)
+
+    # Step 2: Update z
+    z_update <- beta + u
+    qp_solution <- solve.QP(Dmat = diag(p), dvec = z_update, Amat = t(A), bvec = b, meq = 0)
+    z <- qp_solution$solution
+
+    # Step 3: Update u
+    u <- u + (beta - z)
+
+    # Check convergence
+    primal_residual <- sqrt(sum((beta - z)^2))
+    dual_residual <- rho * sqrt(sum((z - z_update)^2))
+
+    if (primal_residual < tol && dual_residual < tol) {
+      cat("Converged at iteration:", k, "\n")
+      break
+    }
+  }
+
+  return(list(beta = beta, z = z, u = u))
+}
+
+# Example Usage
+# X: Design matrix
+# y: Observed counts
+# A, b: Constraint matrix and vector
+# lambda: Regularization parameter
+# rho: ADMM penalty parameter
+
+# Example dimensions
+set.seed(42)
+X <- model.matrix(~interaction - 1, data = df)
+y <- df$hospital_days
+nlevels1 <- length(levels(df$age_group))
+nlevels2 <- length(levels(df$pulm_impair))
+A <- get_Ax(p = nlevels1, q = nlevels2)
+b <- rep(0, nrow(A))
+lambda <- 0.1
+rho <- 1
+
+result <- admm_poisson(X, y, A, b, lambda = 0.1, rho=1/2)
+print(result$beta)
+
+
+
+
