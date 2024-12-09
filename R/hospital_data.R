@@ -1,0 +1,14 @@
+#' Sample Covid-19 Hospitalization Data
+#'
+#' This dataset contains processed information on hospital stays and patient characteristics.
+#'
+#' @format A data frame with X rows and 5 variables:
+#' \describe{
+#'   \item{hospital_days}{Hospitalization time in days (numeric).}
+#'   \item{age_group}{Patient age group (factor).}
+#'   \item{pulm_impair}{Pulmonary impairment level (factor).}
+#'   \item{age_pulm}{Interaction of age group and pulmonary impairment (factor).}
+#'   \item{num_comorb}{Total number of comorbidities (factor).}
+#' }
+#' @source \url{https://figshare.com/articles/dataset/COVID-19_Hospital_Admissions_Database_xlsx/16746073/4?file=39305354}
+"data"
