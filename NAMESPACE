@@ -1,2 +1,4 @@
 exportPattern("^[[:alpha:]]+")
 importFrom(stats, model.matrix, as.formula)
+importFrom(Matrix, solve)
+importFrom(quadprog, solve.QP)

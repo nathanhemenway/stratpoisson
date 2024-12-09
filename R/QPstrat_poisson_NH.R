@@ -77,38 +77,24 @@ penalty_vec_simp <- function(nlevels_vec){
 #' @param lambda tuning parameter for the LASSO penalty
 #' @param tol tolerance level for convergence
 #' @param max_iter maximum number of iterations
+#' @param warm.start initial values for beta
 #' @return a vector of model coefficients
 #' @examples
 #' data("data")
 #' strat_poisson(data, 'hospital_days', c('age_group', 'pulm_impair'), lambda = 0)
 #' @export
-strat_poisson <- function(df, y, vars, lambda=0, tol = 1e-6, max_iter = 100) {
+strat_poisson <- function(df, y, vars, lambda=0, tol = 1e-6, max_iter = 100, warm.start) {
   # Convert specified columns to factors
   nlevels <- c()
   for(var in vars) {
     df[[var]] <- as.factor(df[[var]])
     nlevels <- c(nlevels, length(levels(df[[var]])))
   }
-  #df[[var1]] <- as.factor(df[[var1]])
-  #df[[var2]] <- as.factor(df[[var2]])
-
-  # Find the number of levels in var1 and var2
-  #nlevels1 <- length(levels(df[[var1]]))
-  #nlevels2 <- length(levels(df[[var2]]))
-
-  # Initialize the design matrix, excluding the intercept
-  #formula_str <- paste("~", var1, "+", var2, '-1')
 
   #Create design matrix for all vars - no intercept
   formula_str <- paste("~", paste(vars, collapse = " + "))
 
   X <- model.matrix(as.formula(formula_str), data = df)
-
-  # Create beta_indices vector
-  #var1_levels <- seq(nlevels1)  # Exclude reference category
-  #var2_levels <- seq(nlevels1 + 1, nlevels1 + nlevels2)  # Adjusted for second factor
-
-  #beta_indices <- list(var1_levels, var2_levels)
 
   # Total number of beta coefficients to estimate
   length_beta <- ncol(X)  # Use total columns in X for testing
@@ -121,8 +107,14 @@ strat_poisson <- function(df, y, vars, lambda=0, tol = 1e-6, max_iter = 100) {
   log_Y <- log(y + 0.1)
 
   # Initial coefficient estimates
-  #beta <- solve(t(X) %*% X) %*% t(X) %*% log_Y
-  beta <- rep(1, ncol(X))
+
+  if (missing(warm.start)) {
+    beta <- rep(1, ncol(X))
+  } else {
+    beta <- warm.start
+  }
+
+  #beta <- rep(1, ncol(X))
   epsilon <- 99
   iter <- 0
 
@@ -151,11 +143,92 @@ strat_poisson <- function(df, y, vars, lambda=0, tol = 1e-6, max_iter = 100) {
 
     #iterate
     iter <- iter + 1
-    print(iter)
   }
 
   return(beta)
 }
+
+#Create function to find BIC for a given model
+
+#' bic_poisson_simp
+#'
+#' @description Find the BIC for a given LASSO tree interaction model
+#' @param df data frame with variables of interest
+#' @param y response variable (poisson distributed)
+#' @param vars character vector of variable names to include in the model
+#' @param beta vector of model coefficients
+#' @return BIC value
+#' @examples
+#' data("data")
+#' bic_poisson_simp(data, 'hospital_days', c('age_group', 'pulm_impair'), beta = rep(1, 10))
+#' @export
+bic_poisson_simp <- function(df, y, vars, beta) {
+
+  for(var in vars) {
+    df[[var]] <- as.factor(df[[var]])
+  }
+
+  #Create design matrix for all vars
+  formula_str <- paste("~", paste(vars, collapse = " + "))
+
+  X <- model.matrix(as.formula(formula_str), data = df)
+  y <- df[[y]]
+
+  n <- nrow(df)
+  eta <- X %*% beta
+  mu <- exp(eta)
+  loglik <- sum(y * eta - mu - lfactorial(y))
+  bic <- -2 * loglik + log(n) * length(unique(round(beta,8)))
+  return(bic)
+}
+
+
+#Find optimal lambda over grid using BIC
+
+#' bic_mse_lambda_simp
+#' @description Find the optimal lambda value over a grid using BIC
+#' @param df data frame with variables of interest
+#' @param y response variable (poisson distributed)
+#' @param vars character vector of variable names to include in the model
+#' @param lambda_grid grid of lambda values to test
+#' @return a list containing the optimal lambda value, BIC values, and MSE values
+#' @examples
+#' data("data")
+#' bic_mse_lambda_simp(data, 'hospital_days', vars = c('age_group', 'pulm_impair'), seq(0.1, 1, 0.1))
+#' @export
+bic_mse_lambda_simp <- function(df, y, vars, lambda_grid){
+  bic_values <- c()
+  n_unique_beta <- c()
+  MSE <- c()
+
+  for(var in vars) {
+    df[[var]] <- as.factor(df[[var]])
+  }
+
+  y1 <- df[[y]]
+
+  #Create design matrix for all vars
+  formula_str <- paste("~", paste(vars, collapse = " + "))
+
+  X <- model.matrix(as.formula(formula_str), data = df)
+
+
+  for(i in 1:length(lambda_grid)){
+    if(i == 1){
+      beta <- strat_poisson(df, y, vars, lambda = lambda_grid[i], tol = 1e-8, max_iter = 100)
+    }else{
+      beta <- strat_poisson(df, y, vars, lambda = lambda_grid[i], tol = 1e-8, max_iter = 100, warm.start = beta)
+    }
+
+    bic_values <- c(bic_values, bic_poisson_simp(df, y, vars, beta))
+    n_unique_beta <- c(n_unique_beta, length(unique(beta)))
+    MSE <- c(MSE, mean((exp(X %*% beta) - y1)^2))
+  }
+  result <- list(lambda.min = lambda_grid[which.min(bic_values)], bic_values = bic_values, MSE = MSE)
+
+  return(result)
+}
+
 
 
 ## Interaction model functions
@@ -164,7 +237,7 @@ strat_poisson <- function(df, y, vars, lambda=0, tol = 1e-6, max_iter = 100) {
 
 #' get_Ax
 #'
-#' @description Creates the matrix of constraints to be passed into quadratic programming problem for interaction model
+#' @description Creates the matrix of constraints to be passed into quadratic programming problem for interaction model, code adapted from the glidars R package
 #' @param p number of levels for the first categorical variable
 #' @param q number of levels for the second categorical variable
 #' @return An n x p matrix of constraints, where n is the number of constraints, and p is the length of beta
@@ -239,7 +312,7 @@ penalty_vec <- function(p, q){
 #' @param tol tolerance level for convergence
 #' @param max_iter maximum number of iterations
 #' @param warm.start initial values for beta
-#' @return a vector of model coefficients
+#' @return a vector containing the beta coefficients for the interaction grid
 #' @examples
 #' data("data")
 #' strat_poissonX(data, 'hospital_days', var1 = 'age_group', var2 = 'pulm_impair', lambda = 0)

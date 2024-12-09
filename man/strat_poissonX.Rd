@@ -33,7 +33,7 @@ strat_poissonX(
 \item{warm.start}{initial values for beta}
 }
 \value{
-a vector of model coefficients
+a vector containing the beta coefficients for the interaction grid
 }
 \description{
 Fits the LASSO tree model on the given data assuming an interaction grid

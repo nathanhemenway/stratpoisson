@@ -4,7 +4,7 @@
 \alias{strat_poisson}
 \title{strat_poisson}
 \usage{
-strat_poisson(df, y, vars, lambda = 0, tol = 1e-06, max_iter = 100)
+strat_poisson(df, y, vars, lambda = 0, tol = 1e-06, max_iter = 100, warm.start)
 }
 \arguments{
 \item{df}{data frame with variables of interest}
@@ -18,6 +18,8 @@ strat_poisson(df, y, vars, lambda = 0, tol = 1e-06, max_iter = 100)
 \item{tol}{tolerance level for convergence}
 
 \item{max_iter}{maximum number of iterations}
+
+\item{warm.start}{initial values for beta}
 }
 \value{
 a vector of model coefficients
