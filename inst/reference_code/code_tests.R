@@ -277,4 +277,156 @@
 # # Initialize the design matrix with no intercept - cell means coding
 # X <- model.matrix(~interaction - 1, data = df)
 # X <- model.matrix(~interaction, data = df)
+
+# get_At <- function(nlevels_vec) {
+#   # List to hold the monotonic constraint matrices
+#   monotonic <- list()
 #
+#   # The total number of coefficients (including the intercept)
+#   total_levels <- sum(nlevels_vec)  # Total number of coefficients including the intercept
+#
+#   prev_levels <- 0  # To track the previous levels for each variable
+#
+#   # Loop over each categorical variable's levels
+#   for (nlevel in nlevels_vec) {
+#     # Create a constraint matrix for the current categorical variable (excluding intercept)
+#     constraint <- matrix(0, nrow = nlevel - 1, ncol = total_levels - (length(nlevels_vec) - 1))  # Total columns minus 1 (intercept)
+#
+#     for (i in 1:(nlevel - 1)) {
+#       # For the first constraint, compare the first level to the second
+#       if (i == 1) {
+#         constraint[i, prev_levels + 1] <- 0  # No constraint on the intercept
+#         constraint[i, prev_levels + 2] <- 1  # First level (no constraint on intercept)
+#       } else {
+#         # For subsequent constraints, compare adjacent levels
+#         constraint[i, prev_levels + i] <- -1  # Previous level
+#         constraint[i, prev_levels + i + 1] <- 1  # Current level
+#       }
+#     }
+#
+#     # Update the previous level count for the next variable
+#     prev_levels <- prev_levels + (nlevel - 1)  # Exclude intercept from this count
+#     monotonic <- append(monotonic, list(constraint))  # Add the constraint matrix for the variable
+#   }
+#
+#   # Combine the constraint matrices for all variables
+#   monotonic <- do.call(rbind, monotonic)
+#
+#   # Ensure we have exactly 10 columns (1 for intercept, the rest for the variables)
+#   # Intercept is in the first column, and the non-intercept columns for the levels of the categorical variables
+#   return(monotonic)
+# }
+#
+#
+# get_At2 <- function(nlevels_vec) {
+#   # List to hold the monotonic constraint matrices
+#   monotonic <- list()
+#
+#   # The total number of coefficients (including the intercept)
+#   total_levels <- sum(nlevels_vec)  # Total number of coefficients including the intercept
+#
+#   prev_levels <- 0  # To track the previous levels for each variable
+#
+#   # Loop over each categorical variable's levels
+#   for (nlevel in nlevels_vec) {
+#     # Create a constraint matrix for the current categorical variable (excluding intercept)
+#     constraint <- matrix(0, nrow = nlevel - 1, ncol = total_levels - (length(nlevels_vec) - 1))  # Total columns minus 1 (intercept)
+#
+#     for (i in 1:(nlevel - 1)) {
+#       # For the first constraint, compare the first level to the second
+#       if (i == 1) {
+#         constraint[i, prev_levels + 2] <- 1  # No constraint on the intercept
+#       } else {
+#         # For subsequent constraints, compare adjacent levels
+#         constraint[i, prev_levels + i + 1] <- -1  # Previous level
+#         constraint[i, prev_levels + i + 2] <- 1  # Current level
+#       }
+#     }
+#
+#     # Update the previous level count for the next variable
+#     prev_levels <- prev_levels + (nlevel - 1)  # Exclude intercept from this count
+#     monotonic <- append(monotonic, list(constraint))  # Add the constraint matrix for the variable
+#   }
+#
+#   # Combine the constraint matrices for all variables
+#   monotonic <- do.call(rbind, monotonic)
+#
+#   # Ensure we have exactly 10 columns (1 for intercept, the rest for the variables)
+#   # Intercept is in the first column, and the non-intercept columns for the levels of the categorical variables
+#   return(monotonic)
+# }
+#
+# penalty_vec_simpt <- function(nlevels_vec){
+#   penalty <- c()
+#   for(nlevel in nlevels_vec){
+#     penalty <- c(penalty, rep(0, nlevel - 2), 1)
+#   }
+#   return(c(0, penalty))
+# }
+#
+# strat_poissont <- function(df, y, vars, lambda=0, tol = 1e-6, max_iter = 100, warm.start) {
+#   # Convert specified columns to factors
+#   nlevels <- c()
+#   for(var in vars) {
+#     df[[var]] <- as.factor(df[[var]])
+#     nlevels <- c(nlevels, length(levels(df[[var]])))
+#   }
+#
+#   #Create design matrix for all vars - no intercept
+#   formula_str <- paste("~", paste(vars, collapse = " + "))
+#
+#   X <- model.matrix(as.formula(formula_str), data = df)
+#
+#   # Total number of beta coefficients to estimate
+#   length_beta <- ncol(X)  # Use total columns in X for testing
+#
+#   # Create the constraint matrix
+#   Amat <- get_At(nlevels)
+#   bvec <- rep(0, nrow(Amat))  # All constraints are of the form >= 0
+#
+#   y <- df[[y]]
+#   log_Y <- log(y + 0.1)
+#
+#   # Initial coefficient estimates
+#
+#   if (missing(warm.start)) {
+#     beta <- rep(1, ncol(X))
+#   } else {
+#     beta <- warm.start
+#   }
+#
+#   #beta <- rep(1, ncol(X))
+#   epsilon <- 99
+#   iter <- 0
+#
+#   #IRWLS
+#   while (epsilon > tol & iter <= max_iter) {
+#     eta <- X %*% beta
+#     mu <- exp(eta)
+#     nu <- exp(eta)
+#
+#     A <- Matrix::.sparseDiagonal(as.vector(nu), n = nrow(nu))
+#     z <- eta + solve(A) %*% (y - mu)
+#
+#
+#     # Compute D and d for the quadratic program
+#     D <- 2 * t(X) %*% A %*% X  # Quadratic term
+#     d <- 2 * ((t(X) %*% A %*% z) - lambda *  penalty_vec_simpt(nlevels)) # Linear term with penalty
+#
+#     # Solve the quadratic program with constraints
+#     solution <- quadprog::solve.QP(Dmat = D, dvec = d, Amat = t(Amat), bvec = bvec)
+#
+#     beta_new_star <- solution$solution  # Extract solution
+#
+#     # Check convergence
+#     epsilon <- sqrt(t(beta_new_star - beta) %*% (beta_new_star - beta))
+#     beta <- beta_new_star  # Update beta
+#
+#     #iterate
+#     iter <- iter + 1
+#   }
+#
+#   return(beta)
+# }
+#
+# strat_poissont(data, 'hospital_days', c('age_group', 'pulm_impair', 'num_comorb'), lambda=0, tol = 1e-6, max_iter = 100)

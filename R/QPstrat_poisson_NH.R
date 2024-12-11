@@ -19,17 +19,17 @@ get_A <- function(nlevels_vec) {
   # Loop over each categorical variable's levels
   for (nlevel in nlevels_vec) {
     # Create a constraint matrix for the current categorical variable (excluding intercept)
-    constraint <- matrix(0, nrow = nlevel - 2, ncol = total_levels - (length(nlevels_vec) - 1))  # Total columns minus 1 (intercept)
+    constraint <- matrix(0, nrow = nlevel - 1, ncol = total_levels - (length(nlevels_vec) - 1))  # Total columns minus 1 (intercept)
 
-    for (i in 1:(nlevel - 2)) {
+    for (i in 1:(nlevel - 1)) {
       # For the first constraint, compare the first level to the second
       if (i == 1) {
-        constraint[i, prev_levels + 2] <- -1  # No constraint on the intercept
-        constraint[i, prev_levels + 3] <- 1  # First level (no constraint on intercept)
+        constraint[i, prev_levels + 1] <- 0  # No constraint on the intercept
+        constraint[i, prev_levels + 2] <- 1  # First level (no constraint on intercept)
       } else {
         # For subsequent constraints, compare adjacent levels
-        constraint[i, prev_levels + i + 1] <- -1  # Previous level
-        constraint[i, prev_levels + i + 2] <- 1  # Current level
+        constraint[i, prev_levels + i] <- -1  # Previous level
+        constraint[i, prev_levels + i + 1] <- 1  # Current level
       }
     }
 
@@ -63,7 +63,7 @@ penalty_vec_simp <- function(nlevels_vec){
   for(nlevel in nlevels_vec){
     penalty <- c(penalty, rep(0, nlevel - 2), 1)
   }
-  return(c(-1,penalty))
+  return(c(0,penalty))
 }
 
 # Main function to set up and fit the penalized GLM model - non-interaction
