@@ -257,7 +257,7 @@ get_Ax <- function(p, q) {
       j <- (i - 1)%/%(p-1) + i
       Ax[i + p*(q - 1), j:(j + 1)] <- c(-1, 1)
     }
-  #Ax <- rbind(c(1, rep(0, p*q-1)), Ax)
+  Ax <- rbind(c(1, rep(0, ncol(Ax)-1)), Ax)
   return(Ax)
 }
 

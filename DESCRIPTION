@@ -13,6 +13,6 @@ Imports:
     quadprog
 File LICENSE included: true
 LazyData: true
-Suggests: knitr, rmarkdown, pheatmap
+Suggests: knitr, rmarkdown, pheatmap, rpart
 VignetteBuilder: knitr
 Depends: R (>= 3.5.0)
