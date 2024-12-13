@@ -15,7 +15,7 @@ get_Ax(p, q)
 An n x p matrix of constraints, where n is the number of constraints, and p is the length of beta
 }
 \description{
-Creates the matrix of constraints to be passed into quadratic programming problem for interaction model, code adapted from the glidars R package
+Creates the matrix of constraints to be passed into quadratic programming problem for interaction model, code adapted from the GLIDARS R package, cited in report
 }
 \examples{
 get_Ax(7, 4)

@@ -1,3 +1,9 @@
+#Code written by Nathan Hemenway
+#ChatGPT links:
+#R-package development: https://chatgpt.com/share/675b9e89-d7d8-8013-ab35-e082eb5501cd
+#quadprog package use: https://chatgpt.com/share/675b9ec1-d100-8013-ba15-a975f00b1aa7
+#penalty vector: https://chatgpt.com/share/675b9f28-6bc8-8013-8095-36e574819d87
+#constraint matrix: https://chatgpt.com/share/675b9f61-49cc-8013-9cdd-666bbb9e3a1a
 
 #' get_A
 #'
@@ -237,7 +243,7 @@ bic_mse_lambda_simp <- function(df, y, vars, lambda_grid){
 
 #' get_Ax
 #'
-#' @description Creates the matrix of constraints to be passed into quadratic programming problem for interaction model, code adapted from the glidars R package
+#' @description Creates the matrix of constraints to be passed into quadratic programming problem for interaction model, code adapted from the GLIDARS R package, cited in report
 #' @param p number of levels for the first categorical variable
 #' @param q number of levels for the second categorical variable
 #' @return An n x p matrix of constraints, where n is the number of constraints, and p is the length of beta
